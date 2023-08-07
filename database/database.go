@@ -12,14 +12,30 @@ type Database struct {
 	passwordHash []byte
 }
 
-func Create(masterPassword []byte, cipherBuffer []byte) (*Database, error) {
-	buffer, err := scrypt.Decrypt(masterPassword, cipherBuffer, 18)
+func New(masterPassword string) (*Database, error) {
+	var db Database
+	var err error
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), 12)
+	if err != nil {
+		return nil, err
+	}
+
+	db.data = make(map[string][]byte)
+	
+	return &db, nil
+}
+
+func Decrypt(masterPassword string, cipherBuffer []byte) (*Database, error) {
+	buffer, err := scrypt.Decrypt([]byte(masterPassword), cipherBuffer, 18)
 	if err != nil {
 		return nil, err
 	}
 
 	var db Database
-	db.passwordHash, err = bcrypt.GenerateFromPassword(masterPassword, 12)
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), 12)
+	if err != nil {
+		return nil, err
+	}
 
 	db.data, err = serialize.DeserializeMap(buffer)
 	if err != nil {
@@ -29,8 +45,8 @@ func Create(masterPassword []byte, cipherBuffer []byte) (*Database, error) {
 	return &db, nil
 }
 
-func (db *Database) Encrypt(masterPassword []byte) ([]byte, error) {
-	err := bcrypt.CompareHashAndPassword(db.passwordHash, masterPassword)
+func (db *Database) Encrypt(masterPassword string) ([]byte, error) {
+	err := bcrypt.CompareHashAndPassword(db.passwordHash, []byte(masterPassword))
 	if err != nil {
 		return nil, err
 	}
@@ -40,17 +56,22 @@ func (db *Database) Encrypt(masterPassword []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	cipherBuffer, err := scrypt.Encrypt(masterPassword, data, 18)
+	cipherBuffer, err := scrypt.Encrypt([]byte(masterPassword), data, 18)
 
 	return cipherBuffer, nil
 }
 
-func (db *Database) AddPassword(username string, password string) error {
+func (db *Database) AddAccount(masterPassword string, username string, password string) error {
 	if _, ok := db.data[username]; ok {
 		return errors.New("cannot overwrite passwords")
 	}
 
-	cipherText, err := scrypt.Encrypt(db.passwordHash, []byte(password), 10)
+	err := bcrypt.CompareHashAndPassword(db.passwordHash, []byte(masterPassword))
+	if err != nil {
+		return err
+	}
+
+	cipherText, err := scrypt.Encrypt([]byte(masterPassword), []byte(password), 10)
 	if err != nil {
 		return err
 	}
@@ -60,7 +81,7 @@ func (db *Database) AddPassword(username string, password string) error {
 	return nil
 }
 
-func (db *Database) RemovePassword(username string, masterPassword string) error {
+func (db *Database) RemoveAccount(masterPassword string, username string) error {
 	if _, ok := db.data[username]; !ok {
 		return errors.New("username not found")
 	}
@@ -75,7 +96,25 @@ func (db *Database) RemovePassword(username string, masterPassword string) error
 	return nil
 }
 
-func (db *Database) GetUsernames() []string {
+func (db *Database) GetPassword(masterPassword string, username string) (string, error) {
+	if _, ok := db.data[username]; !ok {
+		return string(""), errors.New("username not found")
+	}
+
+	err := bcrypt.CompareHashAndPassword(db.passwordHash, []byte(masterPassword))
+	if err != nil {
+		return string(""), err
+	}
+
+	plaintext, err := scrypt.Decrypt([]byte(masterPassword), db.data[username], 10)
+	if err != nil {
+		return string(""), err
+	}
+
+	return string(plaintext), nil
+}
+
+func (db *Database) GetAccounts() []string {
 	keys := make([]string, 0, len(db.data))
 	for k := range db.data {
 		keys = append(keys, k)
