@@ -1,10 +1,18 @@
 package database
 
 import (
+	"errors"
+	"os"
+	"pwm/argon2"
 	"pwm/scrypt"
 	"pwm/serialize"
+
 	"golang.org/x/crypto/bcrypt"
-	"errors"
+)
+
+const (
+	majorHash = 19
+	minorHash = 15
 )
 
 type Database struct {
@@ -15,7 +23,7 @@ type Database struct {
 func New(masterPassword string) (*Database, error) {
 	var db Database
 	var err error
-	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), 12)
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorHash)
 	if err != nil {
 		return nil, err
 	}
@@ -26,13 +34,13 @@ func New(masterPassword string) (*Database, error) {
 }
 
 func Decrypt(masterPassword string, cipherBuffer []byte) (*Database, error) {
-	buffer, err := scrypt.Decrypt([]byte(masterPassword), cipherBuffer, 18)
+	buffer, err := scrypt.Decrypt([]byte(masterPassword), cipherBuffer, majorHash)
 	if err != nil {
 		return nil, err
 	}
 
 	var db Database
-	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), 12)
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorHash)
 	if err != nil {
 		return nil, err
 	}
@@ -56,9 +64,27 @@ func (db *Database) Encrypt(masterPassword string) ([]byte, error) {
 		return nil, err
 	}
 
-	cipherBuffer, err := scrypt.Encrypt([]byte(masterPassword), data, 18)
+	cipherBuffer, err := scrypt.Encrypt([]byte(masterPassword), data, majorHash)
 
 	return cipherBuffer, nil
+}
+
+func FromFile(masterPassword string, fileName string) (*Database, error) {
+	content, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	return Decrypt(masterPassword, content)
+}
+
+func (db *Database) ToFile(masterPassword string, fileName string) error {
+	contents, err := db.Encrypt(masterPassword)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(fileName, contents, 0644)
 }
 
 func (db *Database) AddAccount(masterPassword string, username string, password string) error {
@@ -71,7 +97,7 @@ func (db *Database) AddAccount(masterPassword string, username string, password 
 		return err
 	}
 
-	cipherText, err := scrypt.Encrypt([]byte(masterPassword), []byte(password), 10)
+	cipherText, err := argon2.Encrypt([]byte(masterPassword), []byte(password), 14)
 	if err != nil {
 		return err
 	}
@@ -106,7 +132,7 @@ func (db *Database) GetPassword(masterPassword string, username string) (string,
 		return string(""), err
 	}
 
-	plaintext, err := scrypt.Decrypt([]byte(masterPassword), db.data[username], 10)
+	plaintext, err := argon2.Decrypt([]byte(masterPassword), db.data[username], 14)
 	if err != nil {
 		return string(""), err
 	}
