@@ -6,65 +6,180 @@ import (
 	"fmt"
 	"os"
 	"pwm/database"
+	"pwm/scrypt"
 	"strings"
+
 	"golang.org/x/term"
 )
 
 func Init() {
-	fmt.Println("Do you wish to load passwords from a file? (Y, N)")
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
+	} else {
+		switch strings.ToLower(os.Args[1]) {
+			case "--encrypt":
+				if len(os.Args) < 3 {
+					fmt.Println("Expected file\nUsage: --encrypt <file>")
+				} else {
+					contents, err := os.ReadFile(os.Args[2])
+					if err != nil {
+						panic(err)
+					}
+					password := passwordConfirmation("What will the password be for this file?")
 
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	text := scanner.Text()
+					fmt.Println("Encrypting", os.Args[2])
+					ciphertext, err := scrypt.Encrypt([]byte(password), contents, 18)
+					if err != nil {
+						panic(err)
+					}
 
-	switch strings.ToLower(text) {
-		case "y":
-			fmt.Println("Loading file with name:")
-			scanner.Scan()
-			name := scanner.Text()
-
-			fmt.Println("Enter the password to this file")
-			password, err := term.ReadPassword(int(os.Stdin.Fd()))
-			if err != nil {
-				panic(err)
-			}
-
-			channel := make(chan *database.Database)
-			go func() {
-				db, err := database.FromFile(string(password), name)
-				if err != nil {
-					fmt.Println("Could not open file")
-					panic(err)
+					var outfile string
+					if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
+						outfile = os.Args[4]
+					} else {
+						outfile = os.Args[2]
+					}
+					
+					fmt.Printf("Writing to %s\n", outfile)
+					err = os.WriteFile(outfile, ciphertext, 0644)
+					if err != nil {
+						panic(err)
+					}
 				}
-				channel <- db
-				close(channel)
-			}()
+			case "--decrypt":
+				if len(os.Args) < 3 {
+					fmt.Println("Expected file\nUsage: --decrypt <file>")
+				} else {
+					contents, err := os.ReadFile(os.Args[2])
+					if err != nil {
+						panic(err)
+					}
+					fmt.Println("Enter the files password")
+					password, err := term.ReadPassword(int(os.Stdin.Fd()))
+					if err != nil {
+						panic(err)
+					}
 
-			cliLoop(scanner, channel)
-		case "n":
-			password := passwordConfirmation("Creating new database, what should the master password be?")
+					fmt.Println("Decrypting", os.Args[2])
+					ciphertext, err := scrypt.Decrypt([]byte(password), contents, 18)
+					if err != nil {
+						panic(err)
+					}
 
-			channel := make(chan *database.Database)
-			go func() {
-				db, err := database.New(password)
-				if err != nil {
-					fmt.Println("Failed to create database")
-					panic(err)
+					var outfile string
+					if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
+						outfile = os.Args[4]
+					} else {
+						outfile = os.Args[2]
+					}
+					
+					fmt.Printf("Writing to %s\n", outfile)
+					err = os.WriteFile(outfile, ciphertext, 0644)
+					if err != nil {
+						panic(err)
+					}
 				}
-				channel <- db
-				close(channel)
-			}()
+			case "--file":
+				if len(os.Args) < 3 {
+					fmt.Println("Expected file\nUsage: --file <file>")
+				} else {
+					fmt.Println("Enter the password to this file")
+					password, err := term.ReadPassword(int(os.Stdin.Fd()))
+					if err != nil {
+						panic(err)
+					}
 
-			cliLoop(scanner, channel)
-		default:
-			fmt.Println("Unknown command")
-			Init()
+					channel := make(chan *database.Database)
+					go func() {
+						db, err := database.FromFile(string(password), os.Args[2])
+						if err != nil {
+							fmt.Println("Could not open file")
+							panic(err)
+						}
+						channel <- db
+						close(channel)
+					}()
+
+					cliLoop(channel)
+				}
+			case "--new":
+				password := passwordConfirmation("Creating new database, what should the master password be?")
+
+				channel := make(chan *database.Database)
+				go func() {
+					db, err := database.New(password)
+					if err != nil {
+						fmt.Println("Failed to create database")
+						panic(err)
+					}
+					channel <- db
+					close(channel)
+				}()
+
+				cliLoop(channel)
+			default:
+				fmt.Println(strings.ToLower(os.Args[1]))
+				fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
+				os.Exit(1)
+		}
 	}
+
+
+	// fmt.Println("Do you wish to load passwords from a file? (Y, N)")
+	//
+	// scanner := bufio.NewScanner(os.Stdin)
+	// scanner.Scan()
+	// text := scanner.Text()
+	//
+	// switch strings.ToLower(text) {
+	// 	case "y":
+	// 		fmt.Println("Loading file with name:")
+	// 		scanner.Scan()
+	// 		name := scanner.Text()
+	//
+	// 		fmt.Println("Enter the password to this file")
+	// 		password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	// 		if err != nil {
+	// 			panic(err)
+	// 		}
+	//
+	// 		channel := make(chan *database.Database)
+	// 		go func() {
+	// 			db, err := database.FromFile(string(password), name)
+	// 			if err != nil {
+	// 				fmt.Println("Could not open file")
+	// 				panic(err)
+	// 			}
+	// 			channel <- db
+	// 			close(channel)
+	// 		}()
+	//
+	// 		cliLoop(channel)
+	// 	case "n":
+	// 		password := passwordConfirmation("Creating new database, what should the master password be?")
+	//
+	// 		channel := make(chan *database.Database)
+	// 		go func() {
+	// 			db, err := database.New(password)
+	// 			if err != nil {
+	// 				fmt.Println("Failed to create database")
+	// 				panic(err)
+	// 			}
+	// 			channel <- db
+	// 			close(channel)
+	// 		}()
+	//
+	// 		cliLoop(channel)
+	// 	default:
+	// 		fmt.Println("Unknown command")
+	// 		Init()
+	// }
 }
 
 
-func cliLoop(scanner *bufio.Scanner, channelDb chan *database.Database) {
+func cliLoop(channelDb chan *database.Database) {
 
+	scanner := bufio.NewScanner(os.Stdin)
 	dbOpened := false
 	var db *database.Database = nil	
 
@@ -72,7 +187,6 @@ func cliLoop(scanner *bufio.Scanner, channelDb chan *database.Database) {
 		fmt.Println("Welcome, to pwm: (help) for commands")
 		scanner.Scan()
 		command := scanner.Text()
-
 
 		openDb := func() {
 			if dbOpened == false {
