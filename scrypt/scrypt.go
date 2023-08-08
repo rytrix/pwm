@@ -10,7 +10,7 @@ import (
 const (
 	scryptN = 2 << 17 // cost of 2^18
 	scryptR = 8
-	scryptP = 1
+	scryptP = 4
 	saltLength = 16
 )
 

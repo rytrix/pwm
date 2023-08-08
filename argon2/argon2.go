@@ -10,7 +10,7 @@ import (
 const (
 	argon2T = 15
 	argon2M = 1 << 18
-	argon2P = 1
+	argon2P = 4
 	saltLength = 16
 )
 

@@ -6,13 +6,12 @@ import (
 	"pwm/argon2"
 	"pwm/scrypt"
 	"pwm/serialize"
-
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
-	majorHash = 19
-	minorHash = 15
+	majorHash = 18
+	minorHash = 12
 )
 
 type Database struct {
