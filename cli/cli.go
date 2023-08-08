@@ -7,11 +7,8 @@ import (
 	"os"
 	"pwm/database"
 	"strings"
-	"sync"
-
 	"golang.org/x/term"
 )
-var wg sync.WaitGroup
 
 func Init() {
 	fmt.Println("Do you wish to load passwords from a file? (Y, N)")
@@ -69,17 +66,18 @@ func Init() {
 func cliLoop(scanner *bufio.Scanner, channelDb chan *database.Database) {
 
 	dbOpened := false
+	var db *database.Database = nil	
 
 	for {
 		fmt.Println("Welcome, to pwm: (help) for commands")
 		scanner.Scan()
 		command := scanner.Text()
 
-		var db *database.Database //:= <- channelDb
 
 		openDb := func() {
 			if dbOpened == false {
 				db = <- channelDb
+				dbOpened = true
 			}
 		}
 
