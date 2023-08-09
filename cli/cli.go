@@ -3,15 +3,17 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"pwm/database"
 	"pwm/scrypt"
 	"strings"
+
 	"golang.org/x/term"
 )
 
-func Init() {
+func Init() error {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
 	} else {
@@ -22,14 +24,14 @@ func Init() {
 				} else {
 					contents, err := os.ReadFile(os.Args[2])
 					if err != nil {
-						panic(err)
+						return err
 					}
 					password := passwordConfirmation("What will the password be for this file?")
 
 					fmt.Println("Encrypting", os.Args[2])
 					ciphertext, err := scrypt.Encrypt([]byte(password), contents, 18)
 					if err != nil {
-						panic(err)
+						return err
 					}
 
 					var outfile string
@@ -42,7 +44,7 @@ func Init() {
 					fmt.Printf("Writing to %s\n", outfile)
 					err = os.WriteFile(outfile, ciphertext, 0644)
 					if err != nil {
-						panic(err)
+						return err
 					}
 				}
 			case "--decrypt":
@@ -51,18 +53,18 @@ func Init() {
 				} else {
 					contents, err := os.ReadFile(os.Args[2])
 					if err != nil {
-						panic(err)
+						return err
 					}
 					fmt.Println("Enter the files password")
 					password, err := term.ReadPassword(int(os.Stdin.Fd()))
 					if err != nil {
-						panic(err)
+						return err
 					}
 
 					fmt.Println("Decrypting", os.Args[2])
 					ciphertext, err := scrypt.Decrypt([]byte(password), contents, 18)
 					if err != nil {
-						panic(err)
+						return err
 					}
 
 					var outfile string
@@ -75,7 +77,7 @@ func Init() {
 					fmt.Printf("Writing to %s\n", outfile)
 					err = os.WriteFile(outfile, ciphertext, 0644)
 					if err != nil {
-						panic(err)
+						return err
 					}
 				}
 			case "--file":
@@ -85,7 +87,7 @@ func Init() {
 					fmt.Println("Enter the password to this file")
 					password, err := term.ReadPassword(int(os.Stdin.Fd()))
 					if err != nil {
-						panic(err)
+						return err
 					}
 
 					channel := make(chan *database.Database)
@@ -93,13 +95,14 @@ func Init() {
 						db, err := database.FromFile(string(password), os.Args[2])
 						if err != nil {
 							fmt.Println("Could not open file")
-							panic(err)
+							channel <- nil
+						} else {
+							channel <- db
 						}
-						channel <- db
 						close(channel)
 					}()
 
-					cliLoop(channel)
+					return cliLoop(channel)
 				}
 			case "--new":
 				password := passwordConfirmation("Creating new database, what should the master password be?")
@@ -109,20 +112,22 @@ func Init() {
 					db, err := database.New(password)
 					if err != nil {
 						fmt.Println("Failed to create database")
-						panic(err)
+						channel <- nil
+					} else {
+						channel <- db
 					}
-					channel <- db
 					close(channel)
 				}()
 
-				cliLoop(channel)
+				return cliLoop(channel)
 			default:
 				fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
 		}
 	}
+	return nil
 }
 
-func cliLoop(channelDb chan *database.Database) {
+func cliLoop(channelDb chan *database.Database) error {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	dbOpened := false
@@ -133,18 +138,25 @@ func cliLoop(channelDb chan *database.Database) {
 		scanner.Scan()
 		command := scanner.Text()
 
-		openDb := func() {
+		openDb := func() error {
 			if dbOpened == false {
 				db = <- channelDb
 				dbOpened = true
+				if db == nil {
+					return errors.New("Database was nil")
+				}
 			}
+			return nil
 		}
 
 		switch strings.ToLower(command) {
 		case "q":
 			fmt.Println("Exiting program.")
-			openDb()
-			return
+			err := openDb()
+			if err != nil {
+				return err
+			}
+			return nil
 		case "help":
 			fmt.Println("q: exits program")
 			fmt.Println("ls: lists accounts")
@@ -153,19 +165,34 @@ func cliLoop(channelDb chan *database.Database) {
 			fmt.Println("get: gets a password")
 			fmt.Println("save: encrypts the db and saves it to a file")
 		case "ls":
-			openDb()
+			err := openDb()
+			if err != nil {
+				return err
+			}
 			listAccounts(db)
 		case "add":
-			openDb()
+			err := openDb()
+			if err != nil {
+				return err
+			}
 			addAccount(db)
 		case "rm":
-			openDb()
+			err := openDb()
+			if err != nil {
+				return err
+			}
 			removeAccount(db)
 		case "get":
-			openDb()
+			err := openDb()
+			if err != nil {
+				return err
+			}
 			getPassword(db)
 		case "save":
-			openDb()
+			err := openDb()
+			if err != nil {
+				return err
+			}
 			channelDb = saveDatabase(db)
 			dbOpened = false
 		default:

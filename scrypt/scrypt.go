@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"golang.org/x/crypto/scrypt"
 )
 
@@ -75,6 +76,9 @@ func Decrypt(password []byte, ciphertext []byte, cost int) ([]byte, error) {
 	// ========== // =========== // ============ //
 	//   salt     //    nonce    //  ciphertext  //
 	nonce := ciphertext[saltLength:saltLength + gcm.NonceSize()]
+	if len(nonce) > len(ciphertext) {
+		return nil, errors.New("Cannot decrypt file")
+	}
 	decryptedtext, err := gcm.Open(nil, nonce, ciphertext[saltLength+gcm.NonceSize():], nil)
 	if err != nil {
 		return nil, err

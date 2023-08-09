@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"pwm/cli"
 )
 
 func main() {
-	cli.Init()
+	err := cli.Init()
+	if err != nil {
+		fmt.Println("Action failed")
+	}
 }
 
