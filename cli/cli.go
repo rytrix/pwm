@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"pwm/database"
-	"pwm/scrypt"
 	"strings"
+
+    "pwm/encrypt"
+    "pwm/database"
 
 	"golang.org/x/term"
 )
@@ -18,100 +19,83 @@ func Init() error {
 		fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
 	} else {
 		switch strings.ToLower(os.Args[1]) {
-			case "--encrypt":
-				if len(os.Args) < 3 {
-					fmt.Println("Expected file\nUsage: --encrypt <file>")
-				} else {
-					contents, err := os.ReadFile(os.Args[2])
-					if err != nil {
-						return err
-					}
-					password := passwordConfirmation("What will the password be for this file?")
-
-					fmt.Println("Encrypting", os.Args[2])
-					ciphertext, err := scrypt.Encrypt([]byte(password), contents, 18)
-					if err != nil {
-						return err
-					}
-
-					var outfile string
-					if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
-						outfile = os.Args[4]
-					} else {
-						outfile = os.Args[2]
-					}
-					
-					fmt.Printf("Writing to %s\n", outfile)
-					err = os.WriteFile(outfile, ciphertext, 0644)
-					if err != nil {
-						return err
-					}
+		case "--encrypt":
+			if len(os.Args) < 3 {
+				fmt.Println("Expected file\nUsage: --encrypt <file>")
+			} else {
+				contents, err := os.ReadFile(os.Args[2])
+				if err != nil {
+					return err
 				}
-			case "--decrypt":
-				if len(os.Args) < 3 {
-					fmt.Println("Expected file\nUsage: --decrypt <file>")
-				} else {
-					contents, err := os.ReadFile(os.Args[2])
-					if err != nil {
-						return err
-					}
-					fmt.Println("Enter the files password")
-					password, err := term.ReadPassword(int(os.Stdin.Fd()))
-					if err != nil {
-						return err
-					}
+				password := passwordConfirmation("What will the password be for this file?")
 
-					fmt.Println("Decrypting", os.Args[2])
-					ciphertext, err := scrypt.Decrypt([]byte(password), contents, 18)
-					if err != nil {
-						return err
-					}
-
-					var outfile string
-					if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
-						outfile = os.Args[4]
-					} else {
-						outfile = os.Args[2]
-					}
-					
-					fmt.Printf("Writing to %s\n", outfile)
-					err = os.WriteFile(outfile, ciphertext, 0644)
-					if err != nil {
-						return err
-					}
+				fmt.Println("Encrypting", os.Args[2])
+				ciphertext, err := encrypt.EncryptScrypt([]byte(password), contents, 18)
+				if err != nil {
+					return err
 				}
-			case "--file":
-				if len(os.Args) < 3 {
-					fmt.Println("Expected file\nUsage: --file <file>")
+
+				var outfile string
+				if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
+					outfile = os.Args[4]
 				} else {
-					fmt.Println("Enter the password to this file")
-					password, err := term.ReadPassword(int(os.Stdin.Fd()))
-					if err != nil {
-						return err
-					}
-
-					channel := make(chan *database.Database)
-					go func() {
-						db, err := database.FromFile(string(password), os.Args[2])
-						if err != nil {
-							fmt.Println("Could not open file")
-							channel <- nil
-						} else {
-							channel <- db
-						}
-						close(channel)
-					}()
-
-					return cliLoop(channel)
+					outfile = os.Args[2]
 				}
-			case "--new":
-				password := passwordConfirmation("Creating new database, what should the master password be?")
+
+				fmt.Printf("Writing to %s\n", outfile)
+				err = os.WriteFile(outfile, ciphertext, 0644)
+				if err != nil {
+					return err
+				}
+			}
+		case "--decrypt":
+			if len(os.Args) < 3 {
+				fmt.Println("Expected file\nUsage: --decrypt <file>")
+			} else {
+				contents, err := os.ReadFile(os.Args[2])
+				if err != nil {
+					return err
+				}
+				fmt.Println("Enter the files password")
+				password, err := term.ReadPassword(int(os.Stdin.Fd()))
+				if err != nil {
+					return err
+				}
+
+				fmt.Println("Decrypting", os.Args[2])
+				ciphertext, err := encrypt.DecryptScrypt([]byte(password), contents, 18)
+				if err != nil {
+					return err
+				}
+
+				var outfile string
+				if len(os.Args) >= 5 && strings.Compare(os.Args[3], "-o") == 0 {
+					outfile = os.Args[4]
+				} else {
+					outfile = os.Args[2]
+				}
+
+				fmt.Printf("Writing to %s\n", outfile)
+				err = os.WriteFile(outfile, ciphertext, 0644)
+				if err != nil {
+					return err
+				}
+			}
+		case "--file":
+			if len(os.Args) < 3 {
+				fmt.Println("Expected file\nUsage: --file <file>")
+			} else {
+				fmt.Println("Enter the password to this file")
+				password, err := term.ReadPassword(int(os.Stdin.Fd()))
+				if err != nil {
+					return err
+				}
 
 				channel := make(chan *database.Database)
 				go func() {
-					db, err := database.New(password)
+					db, err := database.FromFile(string(password), os.Args[2])
 					if err != nil {
-						fmt.Println("Failed to create database")
+						fmt.Println("Could not open file")
 						channel <- nil
 					} else {
 						channel <- db
@@ -120,8 +104,25 @@ func Init() error {
 				}()
 
 				return cliLoop(channel)
-			default:
-				fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
+			}
+		case "--new":
+			password := passwordConfirmation("Creating new database, what should the master password be?")
+
+			channel := make(chan *database.Database)
+			go func() {
+				db, err := database.New(password)
+				if err != nil {
+					fmt.Println("Failed to create database")
+					channel <- nil
+				} else {
+					channel <- db
+				}
+				close(channel)
+			}()
+
+			return cliLoop(channel)
+		default:
+			fmt.Println("Usage: --encrypt <file> --decrypt <file> --file <file> --new")
 		}
 	}
 	return nil
@@ -131,7 +132,7 @@ func cliLoop(channelDb chan *database.Database) error {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	dbOpened := false
-	var db *database.Database = nil	
+	var db *database.Database = nil
 
 	for {
 		fmt.Println("Welcome, to pwm: (help) for commands")
@@ -140,7 +141,7 @@ func cliLoop(channelDb chan *database.Database) error {
 
 		openDb := func() error {
 			if dbOpened == false {
-				db = <- channelDb
+				db = <-channelDb
 				dbOpened = true
 				if db == nil {
 					return errors.New("Database was nil")
@@ -312,5 +313,3 @@ func saveDatabase(db *database.Database) chan *database.Database {
 
 	return channelDb
 }
-
-

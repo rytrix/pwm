@@ -1,10 +1,23 @@
 package database_test
 
 import (
-	"pwm/database"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"pwm/database"
 )
+
+func searchArrayForName(array []string, name string) error {
+	for _, str := range array {
+		if strings.Compare(str, name) == 0 {
+			return nil
+		}
+	}
+
+	return errors.New(fmt.Sprintf("failed to find name %s", name))
+}
 
 func TestDatabase(t *testing.T) {
 	db, err := database.New("password")
@@ -23,14 +36,17 @@ func TestDatabase(t *testing.T) {
 	}
 
 	accounts := db.GetAccounts()
-	if strings.Compare(accounts[0], "user1") != 0 {
-		t.Error("user1 is incorrect")
+	err = searchArrayForName(accounts[:], "user1")
+	if err != nil {
+		t.Error(err)
 	}
-	if strings.Compare(accounts[1], "user2") != 0 {
-		t.Error("user2 is incorrect")
+	err = searchArrayForName(accounts[:], "user2")
+	if err != nil {
+		t.Error(err)
 	}
-	if strings.Compare(accounts[2], "user3") != 0 {
-		t.Error("user3 is incorrect")
+	err = searchArrayForName(accounts[:], "user3")
+	if err != nil {
+		t.Error(err)
 	}
 
 	pw, err := db.GetPassword("password", "user1")
@@ -92,7 +108,7 @@ func TestDatabase(t *testing.T) {
 	}
 
 	// test remove
-	err = db.RemoveAccount("password", "user1") 
+	err = db.RemoveAccount("password", "user1")
 	if err != nil {
 		t.Error(err)
 	}
@@ -101,6 +117,4 @@ func TestDatabase(t *testing.T) {
 	if err == nil {
 		t.Error("expected to be unable to find account")
 	}
-
 }
-

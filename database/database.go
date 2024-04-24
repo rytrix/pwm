@@ -2,44 +2,44 @@ package database
 
 import (
 	"errors"
-	"os"
-	"pwm/argon2"
-	"pwm/scrypt"
-	"pwm/serialize"
 	"golang.org/x/crypto/bcrypt"
+	"os"
+
+	"pwm/encrypt"
+	"pwm/serialize"
 )
 
 const (
-	majorHash = 18
-	minorHash = 12
+	majorCost = 18
+	minorCost = 12
 )
 
 type Database struct {
-	data map[string][]byte
+	data         map[string][]byte
 	passwordHash []byte
 }
 
 func New(masterPassword string) (*Database, error) {
 	var db Database
 	var err error
-	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorHash)
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorCost)
 	if err != nil {
 		return nil, err
 	}
 
 	db.data = make(map[string][]byte)
-	
+
 	return &db, nil
 }
 
 func Decrypt(masterPassword string, cipherBuffer []byte) (*Database, error) {
-	buffer, err := scrypt.Decrypt([]byte(masterPassword), cipherBuffer, majorHash)
+	buffer, err := encrypt.DecryptScrypt([]byte(masterPassword), cipherBuffer, majorCost)
 	if err != nil {
 		return nil, err
 	}
 
 	var db Database
-	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorHash)
+	db.passwordHash, err = bcrypt.GenerateFromPassword([]byte(masterPassword), minorCost)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func Decrypt(masterPassword string, cipherBuffer []byte) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &db, nil
 }
 
@@ -63,7 +63,7 @@ func (db *Database) Encrypt(masterPassword string) ([]byte, error) {
 		return nil, err
 	}
 
-	cipherBuffer, err := scrypt.Encrypt([]byte(masterPassword), data, majorHash)
+	cipherBuffer, err := encrypt.EncryptScrypt([]byte(masterPassword), data, majorCost)
 
 	return cipherBuffer, nil
 }
@@ -96,7 +96,7 @@ func (db *Database) AddAccount(masterPassword string, username string, password 
 		return err
 	}
 
-	cipherText, err := argon2.Encrypt([]byte(masterPassword), []byte(password), 14)
+	cipherText, err := encrypt.EncryptArgon2([]byte(masterPassword), []byte(password), 14)
 	if err != nil {
 		return err
 	}
@@ -128,12 +128,12 @@ func (db *Database) GetPassword(masterPassword string, username string) (string,
 
 	err := bcrypt.CompareHashAndPassword(db.passwordHash, []byte(masterPassword))
 	if err != nil {
-		return string(""), err
+		return "", err
 	}
 
-	plaintext, err := argon2.Decrypt([]byte(masterPassword), db.data[username], 14)
+	plaintext, err := encrypt.DecryptArgon2([]byte(masterPassword), db.data[username], 14)
 	if err != nil {
-		return string(""), err
+		return "", err
 	}
 
 	return string(plaintext), nil
@@ -146,5 +146,3 @@ func (db *Database) GetAccounts() []string {
 	}
 	return keys
 }
-
-
